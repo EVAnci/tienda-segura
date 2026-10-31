@@ -18,3 +18,31 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: docker run --rm -v "$PWD":/src aquasec/trivy:latest config --exit-code 1 --severity HIGH,CRITICAL /src
+      - name: Iniciar aplicación
+        run: |
+          node app.js &
+          echo $! > app.pid
+
+          for i in {1..30}; do
+            if curl --fail --silent "http://localhost:3000/total?p=100&c=2" > /dev/null; then
+              echo "Aplicación disponible"
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "Error: la aplicación no arrancó"
+          exit 1
+
+      - name: Escaneo DAST con OWASP ZAP
+        uses: zaproxy/action-baseline@v0.15.0
+        with:
+          target: 'http://localhost:3000'
+          fail_action: true
+          allow_issue_writing: false
+      - name: Detener aplicación
+        if: always()
+        run: |
+          if [ -f app.pid ]; then
+            kill "$(cat app.pid)" || true
+          fi
